@@ -1,14 +1,11 @@
 #ifndef __RYANNET_H__
 #define __RYANNET_H__
 
-
-
-
 struct ryannet_address;
 struct ryannet_socket_tcp;
 
-void ryannet_init(void);
-
+int ryannet_init(void);
+void ryannet_destroy(void);
 
 struct ryannet_address * ryannet_address_new(const char * address, const char * port);
 void ryannet_address_destroy(struct ryannet_address * address);

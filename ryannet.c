@@ -1,4 +1,10 @@
 #include "ryannet.h"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else // _WIN32
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -9,12 +15,25 @@
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
+#endif // _WIN32
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 
+#ifdef _WIN32
+#pragma comment (lib, "Ws2_32.lib")
+#pragma comment (lib, "Mswsock.lib")
+#pragma comment (lib, "AdvApi32.lib")
+#endif // _WIN32
+
+// Define Close based on system arch
+#ifdef _WIN32
+#define ryannet_close(fd) closesocket(fd)
+#else // _WIN32
+#define ryannet_close(fd) close(fd)
+#endif // _WIN32
 
 struct ryannet_address
 {
@@ -49,8 +68,32 @@ static char * ryannet_string_copy(const char * src)
    return out;
 }
 
-void ryannet_init(void)
+int ryannet_init(void)
 {
+#ifdef _WIN32
+   WSADATA wsa_data;
+   int rv, wsas_rv;
+   wsas_rv = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+   if(wsas_rv != 0)
+   {
+      fprintf(stderr, "WSAStartup Failed with error %d\n", wsas_rv);
+      rv = 1;
+   }
+   else
+   {
+      rv = 0;
+   }
+   return rv;
+#else // _WIN32
+   return 0;
+#endif // _WIN32
+}
+
+void ryannet_destroy(void)
+{
+#ifdef _WIN32
+   WSACleanup();
+#endif // _WIN32
 }
 
 
@@ -110,7 +153,7 @@ void ryannet_socket_tcp_destroy(struct ryannet_socket_tcp * socket)
 {
    if(socket->fd != -1)
    {
-      close(socket->fd);
+      ryannet_close(socket->fd);
    }
    if(socket->local.address != NULL)
    {
@@ -133,8 +176,19 @@ void ryannet_socket_tcp_destroy(struct ryannet_socket_tcp * socket)
 
 static int ryannet_set_nonblocking(int fd)
 {
-   int flags;
    int rv;
+#if _WIN32
+   int yes = 1;
+   if(ioctlsocket(fd, FIONBIO, &yes) != NOERROR)
+   {
+      rv = 1;
+   }
+   else
+   {
+      rv = 0;
+   }
+#else // _WIN32
+   int flags;
    flags = fcntl(fd, F_GETFL, 0);
    if(fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
    {
@@ -144,14 +198,15 @@ static int ryannet_set_nonblocking(int fd)
    {
       rv = 0;
    }
+#endif // _WIN32
    return rv;
 }
 
 static int ryannet_set_tcp_nodelay(int fd)
 {
    int rv;
-   int yes = 1;
-   if(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(int)) == -1)
+   char yes = 1;
+   if(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(char)) == -1)
    {
       rv = 1;
    }
@@ -165,8 +220,8 @@ static int ryannet_set_tcp_nodelay(int fd)
 static int ryannet_set_reuseaddr(int fd)
 {
    int rv;
-   int yes = 1;
-   if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
+   char yes = 1;
+   if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(char)) == -1)
    {
       rv = 1;
    }
@@ -270,7 +325,7 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
       if(rv == 1)
       {
          // TODO: Maybe Error Handling
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          continue;
       }
@@ -279,7 +334,7 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
       if(rv == 1)
       {
          // TODO: Maybe Error Handling
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          continue;
       }
@@ -287,7 +342,7 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
       rv = connect(sock->fd, p->ai_addr, p->ai_addrlen);
       if(rv == -1)
       {
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          // TODO: Maybe Error Handling
          continue;
@@ -350,7 +405,7 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       if(rv == 1)
       {
          // TODO: Maybe Error Handling
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          continue;
       }
@@ -359,7 +414,7 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       if(rv == 1)
       {
          // TODO: Maybe Error Handling
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          continue;
       }
@@ -367,7 +422,7 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       rv = bind(sock->fd, p->ai_addr, p->ai_addrlen);
       if(rv == -1)
       {
-         close(sock->fd);
+         ryannet_close(sock->fd);
          sock->fd = -1;
          // TODO: Maybe Error Handling
          continue;
@@ -378,7 +433,7 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
    rv = listen(sock->fd, 10);
    if(rv == -1)
    {
-      close(sock->fd);
+      ryannet_close(sock->fd);
       sock->fd = -1;
       // TODO: Error Handling
    }
@@ -430,6 +485,7 @@ struct ryannet_socket_tcp * ryannet_socket_tcp_accept(struct ryannet_socket_tcp 
    ryannet_fill_address(&new_socket->local);
 
    new_socket->connected_flag = 1;
+   return new_socket;
 }
 
 int ryannet_socket_tcp_receive(struct ryannet_socket_tcp * socket, void * buffer, int buffer_size_in_bytes)
@@ -457,6 +513,7 @@ int ryannet_socket_tcp_receive(struct ryannet_socket_tcp * socket, void * buffer
       }
      
    }
+   return bytes_received;
 }
 
 int ryannet_socket_tcp_send(struct ryannet_socket_tcp * socket, const void * buffer, int buffer_size_in_bytes)
@@ -532,7 +589,9 @@ struct ryannet_address * ryannet_socket_tcp_get_address_remote(struct ryannet_so
 int ryannet_socket_tcp_is_connected(struct ryannet_socket_tcp * socket)
 {
    int rv;
-   if(socket->connected_flag == 1 && socket->remote_closed_flag == 0)
+   if(socket->connected_flag == 1 && 
+      socket->remote_closed_flag == 0 &&
+      socket->fd != -1)
    {
       rv = 1;
    }
