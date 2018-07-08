@@ -1,6 +1,7 @@
 #include "ryannet.h"
 #include <stdio.h>
 
+#define PORT "1234"
 int main(int args, char * argc[])
 {
    struct ryannet_socket_tcp * client_socket, * server_socket, * con;
@@ -11,12 +12,12 @@ int main(int args, char * argc[])
    (void)ryannet_init();
    
    server_socket = ryannet_socket_tcp_new();
-   rv = ryannet_socket_tcp_bind(server_socket, NULL, "1234");
-   printf("Return Value %d\n", rv);
+   rv = ryannet_socket_tcp_bind(server_socket, NULL, PORT);
+   //printf("Return Value %d\n", rv);
    
    client_socket = ryannet_socket_tcp_new();
-   rv = ryannet_socket_tcp_connect(client_socket, "localhost", "1234");
-   printf("Return Value %d\n", rv);
+   rv = ryannet_socket_tcp_connect(client_socket, "localhost", PORT);
+   //printf("Return Value %d\n", rv);
 
    con = ryannet_socket_tcp_accept(server_socket);
 

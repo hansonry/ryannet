@@ -1,5 +1,5 @@
 settings = NewSettings()
-settings.debug = 0
+settings.debug = 1
 source = Collect("*.c")
 
 objects = Compile(settings, source)

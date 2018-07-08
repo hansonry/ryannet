@@ -97,8 +97,6 @@ void ryannet_destroy(void)
 }
 
 
-
-
 struct ryannet_address * ryannet_address_new(const char * address, const char * port)
 {
    struct ryannet_address * addy;
@@ -205,8 +203,14 @@ static int ryannet_set_nonblocking(int fd)
 static int ryannet_set_tcp_nodelay(int fd)
 {
    int rv;
-   char yes = 1;
-   if(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(char)) == -1)
+#ifdef _WIN32
+   BOOL yes = TRUE;
+   int length = sizeof(BOOL);
+#else // _WIN32
+   int yes = 1;
+   socklen_t length = sizeof(int);
+#endif // _WIN32
+   if(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, length) == -1)
    {
       rv = 1;
    }
@@ -220,8 +224,14 @@ static int ryannet_set_tcp_nodelay(int fd)
 static int ryannet_set_reuseaddr(int fd)
 {
    int rv;
-   char yes = 1;
-   if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(char)) == -1)
+#ifdef _WIN32
+   BOOL yes = TRUE;
+   int length = sizeof(BOOL);
+#else // _WIN32
+   int yes = 1;
+   socklen_t length = sizeof(int);
+#endif // _WIN32
+   if(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, length) == -1)
    {
       rv = 1;
    }
@@ -321,14 +331,6 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
          continue;
       }
 
-      rv = ryannet_set_nonblocking(sock->fd);
-      if(rv == 1)
-      {
-         // TODO: Maybe Error Handling
-         ryannet_close(sock->fd);
-         sock->fd = -1;
-         continue;
-      }
 
       rv = ryannet_set_tcp_nodelay(sock->fd);
       if(rv == 1)
@@ -348,6 +350,17 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
          continue;
       }
       break;
+   }
+
+   if(sock->fd != -1)
+   {
+      rv = ryannet_set_nonblocking(sock->fd);
+      if(rv == 1)
+      {
+         // TODO: Error Handling
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+      }
    }
 
    if(sock->fd == -1)
@@ -401,14 +414,6 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
          continue;
       }
 
-      rv = ryannet_set_nonblocking(sock->fd);
-      if(rv == 1)
-      {
-         // TODO: Maybe Error Handling
-         ryannet_close(sock->fd);
-         sock->fd = -1;
-         continue;
-      }
 
       rv = ryannet_set_reuseaddr(sock->fd);
       if(rv == 1)
@@ -430,12 +435,26 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       break;
    }
 
-   rv = listen(sock->fd, 10);
-   if(rv == -1)
+   if(sock->fd != -1)
    {
-      ryannet_close(sock->fd);
-      sock->fd = -1;
-      // TODO: Error Handling
+      rv = listen(sock->fd, 10);
+      if(rv == -1)
+      {
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+         // TODO: Error Handling
+      }
+   }
+
+   if(sock->fd != -1)
+   {
+      rv = ryannet_set_nonblocking(sock->fd);
+      if(rv == 1)
+      {
+         // TODO: Error Handling
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+      }
    }
 
    if(sock->fd == -1)
