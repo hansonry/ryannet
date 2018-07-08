@@ -5,6 +5,7 @@
 int main(int args, char * argc[])
 {
    struct ryannet_socket_tcp * client_socket, * server_socket, * con;
+   struct ryannet_address * addy;
    char buffer[255];
    int size;
    int rv;
@@ -29,7 +30,12 @@ int main(int args, char * argc[])
 
    printf("Message Length %d, Messgee: %s\n", size, buffer);
 
-
+   addy = ryannet_socket_tcp_get_address_remote(client_socket);
+   printf("Remote ( %s : %s)\n", ryannet_address_get_address(addy), ryannet_address_get_port(addy));
+   addy = ryannet_socket_tcp_get_address_local(client_socket);
+   printf("Local ( %s : %s)\n", ryannet_address_get_address(addy), ryannet_address_get_port(addy));
+   
+   
    ryannet_socket_tcp_destroy(con);
    ryannet_socket_tcp_destroy(client_socket);
    ryannet_socket_tcp_destroy(server_socket);

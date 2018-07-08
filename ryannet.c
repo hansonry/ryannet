@@ -204,7 +204,7 @@ static int ryannet_set_tcp_nodelay(int fd)
 {
    int rv;
 #ifdef _WIN32
-   BOOL yes = TRUE;
+   char yes = TRUE;
    int length = sizeof(BOOL);
 #else // _WIN32
    int yes = 1;
@@ -225,7 +225,7 @@ static int ryannet_set_reuseaddr(int fd)
 {
    int rv;
 #ifdef _WIN32
-   BOOL yes = TRUE;
+   char yes = TRUE;
    int length = sizeof(BOOL);
 #else // _WIN32
    int yes = 1;
@@ -573,14 +573,11 @@ int ryannet_socket_tcp_send(struct ryannet_socket_tcp * socket, const void * buf
                }
 
             }
-           
-           
          }
          else
          {
             // TODO: Handel Errors
          }
-
       }
       else if(errno == ECONNRESET)
       {

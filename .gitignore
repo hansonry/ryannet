@@ -3,5 +3,6 @@
 *.o
 *.obj
 *.swp
+*.pdb
 ryannet_test
 
