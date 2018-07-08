@@ -79,6 +79,15 @@ void ryannet_address_destroy(struct ryannet_address * address)
    free(address);
 }
 
+const char * ryannet_address_get_address(struct ryannet_address * address)
+{
+   return address->address;
+}
+
+const char * ryannet_address_get_port(struct ryannet_address * address)
+{
+   return address->port;
+}
 
 
 struct ryannet_socket_tcp * ryannet_socket_tcp_new(void)

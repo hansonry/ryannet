@@ -14,6 +14,9 @@ struct ryannet_address * ryannet_address_new(const char * address, const char * 
 void ryannet_address_destroy(struct ryannet_address * address);
 
 
+const char * ryannet_address_get_address(struct ryannet_address * address);
+const char * ryannet_address_get_port(struct ryannet_address * address);
+
 
 struct ryannet_socket_tcp * ryannet_socket_tcp_new(void);
 void ryannet_socket_tcp_destroy(struct ryannet_socket_tcp * socket);
