@@ -48,11 +48,14 @@ int main(int argc, char * args[])
       {
          server_socket = ryannet_socket_tcp_new();
          ryannet_socket_tcp_bind(server_socket, NULL, args[2]);
+         addy = ryannet_socket_tcp_get_address_local(server_socket);
+         printf("Local ( %s : %s)\n", ryannet_address_get_address(addy), ryannet_address_get_port(addy));
+         
          con = NULL;
          while(con == NULL)
          {
             con = ryannet_socket_tcp_accept_nonblock(server_socket);
-            printf("Accept Loop\n");
+            //printf("Accept Loop\n");
          }
 
          size = sprintf(buffer, "Hey, Whazzup!") + 1;

@@ -445,6 +445,11 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       fprintf(stderr, "Error: Couldn't Bind to %s : %s\n", bind_address, bind_port);
       return 1;
    }
+   
+   // Copy Local
+   length = sizeof(struct sockaddr_storage);
+   getsockname(sock->fd, (struct sockaddr *)&sock->local.raw, &length);
+   ryannet_fill_address(&sock->local);
 
    sock->connected_flag = 1;
    freeaddrinfo(servinfo);
@@ -754,6 +759,7 @@ int ryannet_socket_udp_send(struct ryannet_socket_udp * sock, struct ryannet_add
    {
       sent_bytes = 0;
    }
+   return sent_bytes;
 }
 
 int ryannet_socket_udp_receive(struct ryannet_socket_udp * socket, void * buffer, int buffer_size_in_bytes, struct ryannet_address * source)
