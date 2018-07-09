@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
-#include <sys/time.h>
+#include <poll.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -49,6 +49,12 @@ struct ryannet_socket_tcp
    int fd;
    int connected_flag;
    int remote_closed_flag;
+};
+
+struct ryannet_socket_udp
+{
+   int fd;
+   struct ryannet_address local;
 };
 
 static char * ryannet_string_copy(const char * src)
@@ -97,14 +103,99 @@ void ryannet_destroy(void)
 }
 
 
-struct ryannet_address * ryannet_address_new(const char * address, const char * port)
+#define PORT_STRING_SIZE 8
+static void ryannet_fill_address(struct ryannet_address * address)
+{
+   size_t size;
+   int port;
+
+   // Address
+   if(address->address != NULL)
+   {
+      free(address->address);
+      address->address = NULL;
+   }
+   switch(address->raw.ss_family)
+   {
+   case AF_INET:
+      size = INET_ADDRSTRLEN;
+      break;
+   case AF_INET6:
+      size = INET6_ADDRSTRLEN;
+      break;
+   default:
+      size = 0;
+      break;
+   }
+
+   if(size > 0)
+   {
+      address->address = malloc(sizeof(char) * size);
+      (void)inet_ntop(address->raw.ss_family, &address->raw, 
+                      address->address, size);
+   }
+
+   // Port
+   if(address->port != NULL)
+   {
+      free(address->port);
+      address->port = NULL;
+   }
+
+   switch(address->raw.ss_family)
+   {
+   case AF_INET:
+      port = ntohs(((struct sockaddr_in *)&address->raw)->sin_port);
+      size = PORT_STRING_SIZE;
+      break;
+   case AF_INET6:
+      port = ntohs(((struct sockaddr_in6 *)&address->raw)->sin6_port);
+      size = PORT_STRING_SIZE;
+      break;
+   default:
+      size = 0;
+      break;
+   }
+   if(size > 0)
+   {
+      address->port = malloc(sizeof(char) * size);
+      sprintf(address->port, "%d", port);
+   }
+
+
+}
+
+struct ryannet_address * ryannet_address_new(void)
 {
    struct ryannet_address * addy;
    addy = malloc(sizeof(struct ryannet_address));
-   addy->address = ryannet_string_copy(address);
-   addy->port = ryannet_string_copy(port);
+   addy->address = NULL;
+   addy->port = NULL;
    memset(&addy->raw, 0, sizeof(struct sockaddr_storage));
    return addy;
+}
+
+int ryannet_address_set(struct ryannet_address * address, const char * node, const char * port)
+{
+   struct addrinfo hints, *servinfo, *p;
+   int rv;
+   socklen_t length;
+
+   memset(&hints, 0, sizeof(struct addrinfo));
+   hints.ai_family = AF_UNSPEC;
+   
+   rv = getaddrinfo(node, port, &hints, &servinfo);
+   if(rv != 0)
+   {
+      fprintf(stderr, "getaddrinfo %s\n", gai_strerror(rv));
+      return 1;
+   }
+
+   memcpy(&address->raw, &servinfo->ai_addr, servinfo->ai_addrlen);
+   ryannet_fill_address(address);
+
+   freeaddrinfo(servinfo);
+   return 0;
 }
 
 void ryannet_address_destroy(struct ryannet_address * address)
@@ -172,33 +263,6 @@ void ryannet_socket_tcp_destroy(struct ryannet_socket_tcp * socket)
    free(socket);
 }
 
-static int ryannet_set_nonblocking(int fd)
-{
-   int rv;
-#if _WIN32
-   int yes = 1;
-   if(ioctlsocket(fd, FIONBIO, &yes) != NOERROR)
-   {
-      rv = 1;
-   }
-   else
-   {
-      rv = 0;
-   }
-#else // _WIN32
-   int flags;
-   flags = fcntl(fd, F_GETFL, 0);
-   if(fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-   {
-      rv = 1;
-   }
-   else
-   {
-      rv = 0;
-   }
-#endif // _WIN32
-   return rv;
-}
 
 static int ryannet_set_tcp_nodelay(int fd)
 {
@@ -242,68 +306,6 @@ static int ryannet_set_reuseaddr(int fd)
    return rv;
 }
 
-
-#define PORT_STRING_SIZE 8
-static void ryannet_fill_address(struct ryannet_address * address)
-{
-   size_t size;
-   int port;
-
-   // Address
-   if(address->address != NULL)
-   {
-      free(address->address);
-      address->address = NULL;
-   }
-   switch(address->raw.ss_family)
-   {
-   case AF_INET:
-      size = INET_ADDRSTRLEN;
-      break;
-   case AF_INET6:
-      size = INET6_ADDRSTRLEN;
-      break;
-   default:
-      size = 0;
-      break;
-   }
-
-  if(size > 0)
-  {
-     address->address = malloc(sizeof(char) * size);
-     (void)inet_ntop(address->raw.ss_family, &address->raw, 
-                     address->address, size);
-  }
-
-   // Port
-   if(address->port != NULL)
-   {
-      free(address->port);
-      address->port = NULL;
-   }
-
-   switch(address->raw.ss_family)
-   {
-   case AF_INET:
-      port = ntohs(((struct sockaddr_in *)&address->raw)->sin_port);
-      size = PORT_STRING_SIZE;
-      break;
-   case AF_INET6:
-      port = ntohs(((struct sockaddr_in6 *)&address->raw)->sin6_port);
-      size = PORT_STRING_SIZE;
-      break;
-   default:
-      size = 0;
-      break;
-   }
-   if(size > 0)
-   {
-      address->port = malloc(sizeof(char) * size);
-      sprintf(address->port, "%d", port);
-   }
-
-
-}
 
 int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * remote_address, const char * remote_port)
 {
@@ -352,16 +354,6 @@ int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * re
       break;
    }
 
-   if(sock->fd != -1)
-   {
-      rv = ryannet_set_nonblocking(sock->fd);
-      if(rv == 1)
-      {
-         // TODO: Error Handling
-         ryannet_close(sock->fd);
-         sock->fd = -1;
-      }
-   }
 
    if(sock->fd == -1)
    {
@@ -446,16 +438,6 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
       }
    }
 
-   if(sock->fd != -1)
-   {
-      rv = ryannet_set_nonblocking(sock->fd);
-      if(rv == 1)
-      {
-         // TODO: Error Handling
-         ryannet_close(sock->fd);
-         sock->fd = -1;
-      }
-   }
 
    if(sock->fd == -1)
    {
@@ -473,37 +455,67 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
 
 struct ryannet_socket_tcp * ryannet_socket_tcp_accept(struct ryannet_socket_tcp * socket)
 {
-   int new_fd;
-   socklen_t length;
-   struct sockaddr_storage remote_address;
    struct ryannet_socket_tcp * new_socket;
+   socklen_t length;
    length = sizeof(struct sockaddr_storage);
-   new_fd = accept(socket->fd, (struct sockaddr *)&remote_address, &length);
-   if(new_fd == -1)
+   new_socket = ryannet_socket_tcp_new();
+   new_socket->fd = accept(socket->fd, (struct sockaddr *)&new_socket->remote.raw, &length);
+   if(new_socket->fd == -1)
    {
-      if(errno != EAGAIN && errno != EWOULDBLOCK)
-      {
-         // TODO: Error Handling
-         fprintf(stderr, "Error durring accept: %s\n", strerror(errno));
-      }
+      // TODO: Error Handling
+      fprintf(stderr, "Error durring accept: %s\n", strerror(errno));
+      ryannet_socket_tcp_destroy(new_socket);
       return NULL;
    }
 
-   (void)ryannet_set_nonblocking(new_fd); 
-   (void)ryannet_set_tcp_nodelay(new_fd);
-
-   new_socket = ryannet_socket_tcp_new();
-   new_socket->fd = new_fd;
+   (void)ryannet_set_tcp_nodelay(new_socket->fd);
 
    // Copy Remote
-   memcpy(&new_socket->remote.raw, &remote_address, length);
    ryannet_fill_address(&new_socket->remote);
+
    // Copy Local
    length = sizeof(struct sockaddr_storage);
    getsockname(new_socket->fd, (struct sockaddr *)&new_socket->local.raw, &length);
    ryannet_fill_address(&new_socket->local);
 
    new_socket->connected_flag = 1;
+   return new_socket;
+}
+
+struct ryannet_socket_tcp * ryannet_socket_tcp_accept_nonblock(struct ryannet_socket_tcp * socket)
+{
+   struct ryannet_socket_tcp * new_socket;
+   int rv;
+#ifdef _WIN32
+   WSAPOLLFD fds;
+   fds.fd = socket->fd;
+   fds.events = POLLRDNORM;
+
+   rv = WSAPoll(&fds, 1, 0);
+#else // _WIN32
+   struct pollfd fds;
+   fds.fd = socket->fd;
+   fds.events = POLLIN;
+
+   rv = poll(&fds, 1, 0);
+#endif // _WIN32
+   if(rv > 0)
+   {
+      new_socket = ryannet_socket_tcp_accept(socket);
+   }
+   else if(rv < 0)
+   {
+      // Error Here
+      fprintf(stderr, "polling Error: %s\n", strerror(errno));
+      new_socket = NULL;
+   }
+   else
+   {
+      new_socket = NULL;
+   }
+
+      
+
    return new_socket;
 }
 
@@ -516,77 +528,56 @@ int ryannet_socket_tcp_receive(struct ryannet_socket_tcp * socket, void * buffer
    {
       socket->remote_closed_flag = 1;
    }
-   if(bytes_received == -1)
+   else if(bytes_received == -1)
    {
-      if(errno == EAGAIN || errno == EWOULDBLOCK)
-      {
-         bytes_received = 0;
-      }
-      else if(errno == ECONNREFUSED)
-      {
-         socket->remote_closed_flag = 1;
-      }
-      else
-      {
-         // TODO: Error Handling
-      }
-     
+      fprintf(stderr, "Error durring receive: %s\n", strerror(errno));
    }
    return bytes_received;
+}
+
+int ryannet_socket_tcp_receive_nonblock(struct ryannet_socket_tcp * socket, void * buffer, int buffer_size_in_bytes)
+{
+   int bytes_sent;
+   int rv;
+#ifdef _WIN32
+   WSAPOLLFD fds;
+   fds.fd = socket->fd;
+   fds.events = POLLRDNORM;
+
+   rv = WSAPoll(&fds, 1, 0);
+#else // _WIN32
+   struct pollfd fds;
+   fds.fd = socket->fd;
+   fds.events = POLLIN;
+
+   rv = poll(&fds, 1, 0);
+#endif // _WIN32
+   if(rv > 0)
+   {
+      bytes_sent = ryannet_socket_tcp_receive(socket, buffer, buffer_size_in_bytes);
+   }
+   else if(rv < 0)
+   {
+      // Error
+      bytes_sent = -1;
+      fprintf(stderr, "Error durring poll: %s\n", strerror(errno));
+   }
+   else
+   {
+      bytes_sent = 0;
+   }
+   return bytes_sent;
+
 }
 
 int ryannet_socket_tcp_send(struct ryannet_socket_tcp * socket, const void * buffer, int buffer_size_in_bytes)
 {
    int bytes_sent;
-   int rv;
-   fd_set wfds;
-   struct timeval timeout;
-
 
    bytes_sent = (int)send(socket->fd, buffer, (size_t)buffer_size_in_bytes, 0);
    if(bytes_sent == -1)
    {
-      if(errno == EAGAIN || errno == EWOULDBLOCK)
-      {
-         // We need to wait a bit for the buffer to be created 
-         FD_ZERO(&wfds);
-         FD_SET(socket->fd, &wfds);
-         timeout.tv_sec = 0;
-         timeout.tv_usec = 10000;
-         rv = select(socket->fd + 1, NULL, &wfds, NULL, &timeout);
-         if(rv > 0)
-         {
-            bytes_sent = (int)send(socket->fd, buffer, (size_t)buffer_size_in_bytes, 0);
-            if(bytes_sent == -1)
-            {
-               if(errno == EAGAIN || errno == EWOULDBLOCK)
-               {
-                  bytes_sent = 0;
-               }
-               else if(errno == ECONNRESET)
-               {
-                  socket->remote_closed_flag = 1;
-               }
-               else
-               {
-                  // TODO: Handel Errors
-               }
-
-            }
-         }
-         else
-         {
-            // TODO: Handel Errors
-         }
-      }
-      else if(errno == ECONNRESET)
-      {
-         socket->remote_closed_flag = 1;
-      }
-      else
-      {
-         // TODO: Handel Errors
-      }
+      fprintf(stderr, "Error durring send: %s\n", strerror(errno));
    }
    return bytes_sent;
 }
@@ -594,11 +585,20 @@ int ryannet_socket_tcp_send(struct ryannet_socket_tcp * socket, const void * buf
 
 struct ryannet_address * ryannet_socket_tcp_get_address_local(struct ryannet_socket_tcp * socket)
 {
+   if(socket->fd == -1)
+   {
+      return NULL;
+   }
    return &socket->local;
+   
 }
 
 struct ryannet_address * ryannet_socket_tcp_get_address_remote(struct ryannet_socket_tcp * socket)
 {
+   if(socket->fd == -1)
+   {
+      return NULL;
+   }
    return &socket->remote;
 }
 
@@ -618,4 +618,200 @@ int ryannet_socket_tcp_is_connected(struct ryannet_socket_tcp * socket)
    return rv;
 }
 
+struct ryannet_socket_udp * ryannet_socket_udp_new(void)
+{
+   struct ryannet_socket_udp * socket;
+   socket = malloc(sizeof(struct ryannet_socket_udp));
+   socket->fd = -1;
+   socket->local.address = NULL;
+   socket->local.port = NULL;
+   memset(&socket->local.raw, 0, sizeof(struct sockaddr_storage));
+
+   return socket;
+}
+
+void ryannet_socket_udp_destroy(struct ryannet_socket_udp * socket)
+{
+   if(socket->fd != -1)
+   {
+      ryannet_close(socket->fd);
+   }
+   if(socket->local.address != NULL)
+   {
+      free(socket->local.address);
+   }
+   if(socket->local.port != NULL)
+   {
+      free(socket->local.port);
+   }
+   free(socket);
+}
+
+int ryannet_socket_udp_bind(struct ryannet_socket_udp * sock, const char * bind_address, const char * bind_port)
+{
+   struct addrinfo hints, *servinfo, *p;
+   int rv;
+   socklen_t length;
+
+   memset(&hints, 0, sizeof(struct addrinfo));
+   hints.ai_family = AF_UNSPEC;
+   hints.ai_socktype = SOCK_DGRAM;
+   hints.ai_flags = AI_PASSIVE; // Use any local IPV4 or IPV6 address I have
+   
+   rv = getaddrinfo(bind_address, bind_port, &hints, &servinfo);
+   if(rv != 0)
+   {
+      fprintf(stderr, "getaddrinfo %s\n", gai_strerror(rv));
+      return 1;
+   }
+
+   for(p = servinfo; p != NULL; p = p->ai_next)
+   {
+      sock->fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+      if(sock->fd == -1)
+      {
+         // TODO: Maybe Error Handling
+         continue;
+      }
+
+      rv = bind(sock->fd, p->ai_addr, p->ai_addrlen);
+      if(rv == -1)
+      {
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+         // TODO: Maybe Error Handling
+         continue;
+      }
+      break;
+   }
+
+
+   if(sock->fd == -1)
+   {
+      // TODO: Error Handing
+      fprintf(stderr, "Error: Couldn't Bind to %s : %s\n", bind_address, bind_port);
+      return 1;
+   }
+
+   // Copy Local
+   length = sizeof(struct sockaddr_storage);
+   getsockname(sock->fd, (struct sockaddr *)&sock->local.raw, &length);
+   ryannet_fill_address(&sock->local);
+
+   freeaddrinfo(servinfo);
+
+   return 0;
+}
+
+int ryannet_socket_udp_send(struct ryannet_socket_udp * sock, struct ryannet_address * destination, const void * buffer, int buffer_size_in_bytes)
+{
+   int sent_bytes;
+   if(sock->fd == -1)
+   {
+      struct addrinfo hints, *servinfo, *p;
+      int rv;
+      socklen_t length;
+
+      memset(&hints, 0, sizeof(struct addrinfo));
+      hints.ai_family = AF_UNSPEC;
+      hints.ai_socktype = SOCK_DGRAM;
+      
+      rv = getaddrinfo(destination->address, destination->port, &hints, &servinfo);
+      if(rv != 0)
+      {
+         fprintf(stderr, "getaddrinfo %s\n", gai_strerror(rv));
+         return 1;
+      }
+
+      for(p = servinfo; p != NULL; p = p->ai_next)
+      {
+         sock->fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+         if(sock->fd == -1)
+         {
+            // TODO: Maybe Error Handling
+            continue;
+         }
+         break;
+      }
+
+      if(sock->fd == -1)
+      {
+         // TODO: Error Handing
+         fprintf(stderr, "Error: Couldn't Create Socket to %s : %s\n", destination->address, destination->port);
+         return 1;
+      }
+
+      // Copy Local
+      length = sizeof(struct sockaddr_storage);
+      getsockname(sock->fd, (struct sockaddr *)&sock->local.raw, &length);
+      ryannet_fill_address(&sock->local);
+   }
+   if(sock->fd != -1)
+   {
+      sent_bytes = sendto(sock->fd, buffer, buffer_size_in_bytes, 0, (struct sockaddr *) &destination->raw, sizeof(struct sockaddr_storage));
+   }
+   else
+   {
+      sent_bytes = 0;
+   }
+}
+
+int ryannet_socket_udp_receive(struct ryannet_socket_udp * socket, void * buffer, int buffer_size_in_bytes, struct ryannet_address * source)
+{
+   int received_bytes;
+   socklen_t length;
+
+   length = sizeof(struct sockaddr_storage);
+   if(socket->fd != -1)
+   {
+      received_bytes = recvfrom(socket->fd, buffer, buffer_size_in_bytes, 0, (struct sockaddr *)&source->raw, &length);
+   }
+   else
+   {
+      received_bytes = 0;
+   }
+   return received_bytes;
+}
+int ryannet_socket_udp_receive_nonblock(struct ryannet_socket_udp * socket, void * buffer, int buffer_size_in_bytes, struct ryannet_address * source)
+{
+   int received_bytes;
+   int rv;
+#ifdef _WIN32
+   WSAPOLLFD fds;
+   fds.fd = socket->fd;
+   fds.events = POLLRDNORM;
+
+   rv = WSAPoll(&fds, 1, 0);
+#else // _WIN32
+   struct pollfd fds;
+   fds.fd = socket->fd;
+   fds.events = POLLIN;
+
+   rv = poll(&fds, 1, 0);
+#endif // _WIN32
+   if(rv > 0)
+   {
+      received_bytes = ryannet_socket_udp_receive(socket, buffer,  buffer_size_in_bytes, source);
+   }
+   else if(rv < 0)
+   {
+      // Error
+      received_bytes = -1;
+      fprintf(stderr, "Error durring poll: %s\n", strerror(errno));
+   }
+   else
+   {
+      received_bytes = 0;
+   }
+   return received_bytes;
+}
+
+struct ryannet_address * ryannet_socket_udp_get_address_local(struct ryannet_socket_udp * socket)
+{
+   if(socket->fd == -1)
+   {
+      return NULL;
+   }
+   return &socket->local;
+}
 

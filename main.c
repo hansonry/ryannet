@@ -51,7 +51,8 @@ int main(int argc, char * args[])
          con = NULL;
          while(con == NULL)
          {
-            con = ryannet_socket_tcp_accept(server_socket);
+            con = ryannet_socket_tcp_accept_nonblock(server_socket);
+            printf("Accept Loop\n");
          }
 
          size = sprintf(buffer, "Hey, Whazzup!") + 1;
@@ -66,7 +67,8 @@ int main(int argc, char * args[])
          size = 0;
          while(size == 0)
          {
-            size = ryannet_socket_tcp_receive(client_socket, buffer, 255);
+            size = ryannet_socket_tcp_receive_nonblock(client_socket, buffer, 255);
+            printf("Recv Loop\n");
          }
 
          printf("Message Length %d, Messgee: %s\n", size, buffer);
