@@ -460,7 +460,16 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
    ryannet_getaddrinfo_dump(bind_address, bind_port);
 
    memset(&hints, 0, sizeof(struct addrinfo));
-   hints.ai_family = AF_UNSPEC;
+   if(bind_address == NULL)
+   {
+      // Windows and linux have differing opinons on what to do here, so
+      // we will take the choice away
+      hints.ai_family = AF_INET;
+   }
+   else
+   {
+      hints.ai_family = AF_UNSPEC;
+   }
    hints.ai_socktype = SOCK_STREAM;
    hints.ai_flags = AI_PASSIVE; // Use any local IPV4 or IPV6 address I have
    
@@ -742,7 +751,16 @@ int ryannet_socket_udp_bind(struct ryannet_socket_udp * sock, const char * bind_
    socklen_t length;
 
    memset(&hints, 0, sizeof(struct addrinfo));
-   hints.ai_family = AF_UNSPEC;
+   if(bind_address == NULL)
+   {
+      // Windows and linux have differing opinons on what to do here, so
+      // we will take the choice away
+      hints.ai_family = AF_INET;
+   }
+   else
+   {
+      hints.ai_family = AF_UNSPEC;
+   }
    hints.ai_socktype = SOCK_DGRAM;
    hints.ai_flags = AI_PASSIVE; // Use any local IPV4 or IPV6 address I have
    
