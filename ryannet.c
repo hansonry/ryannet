@@ -350,6 +350,34 @@ static int ryannet_set_reuseaddr(int fd)
    return rv;
 }
 
+static int ryannet_clear_v6only(int fd, int family)
+{
+   int rv;
+#ifdef _WIN32
+   char no = FALSE;
+   int length = sizeof(BOOL);
+#else // _WIN32
+   int no = 0;
+   socklen_t length = sizeof(int);
+#endif // _WIN32
+   if(family == AF_INET6)
+   {
+      if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &no, length) == -1)
+      {
+         rv = 1;
+      }
+      else
+      {
+         rv = 0;
+      }
+   }
+   else
+   {
+      rv = 0;
+   }
+
+   return rv;
+}
 
 int ryannet_socket_tcp_connect(struct ryannet_socket_tcp * sock, const char * remote_address, const char * remote_port)
 {
@@ -454,6 +482,15 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
 
 
       rv = ryannet_set_reuseaddr(sock->fd);
+      if(rv == 1)
+      {
+         // TODO: Maybe Error Handling
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+         continue;
+      }
+
+      rv = ryannet_clear_v6only(sock->fd, p->ai_family);
       if(rv == 1)
       {
          // TODO: Maybe Error Handling
@@ -724,6 +761,16 @@ int ryannet_socket_udp_bind(struct ryannet_socket_udp * sock, const char * bind_
          // TODO: Maybe Error Handling
          continue;
       }
+
+      rv = ryannet_clear_v6only(sock->fd, p->ai_family);
+      if(rv == 1)
+      {
+         // TODO: Maybe Error Handling
+         ryannet_close(sock->fd);
+         sock->fd = -1;
+         continue;
+      }
+
 
       rv = bind(sock->fd, p->ai_addr, p->ai_addrlen);
       if(rv == -1)
