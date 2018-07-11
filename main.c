@@ -71,7 +71,7 @@ int main(int argc, char * args[])
          while(size == 0)
          {
             size = ryannet_socket_tcp_receive_nonblock(client_socket, buffer, 255);
-            printf("Recv Loop\n");
+            //printf("Recv Loop\n");
          }
 
          printf("Message Length %d, Messgee: %s\n", size, buffer);

@@ -106,8 +106,8 @@ void ryannet_destroy(void)
 #define PORT_STRING_SIZE 8
 static void ryannet_fill_address(struct ryannet_address * address)
 {
-   size_t size;
-   int port;
+   size_t size_address, size_port;
+   int rv;
 
    // Address
    if(address->address != NULL)
@@ -118,21 +118,19 @@ static void ryannet_fill_address(struct ryannet_address * address)
    switch(address->raw.ss_family)
    {
    case AF_INET:
-      size = INET_ADDRSTRLEN;
+      size_address = INET_ADDRSTRLEN;
       break;
    case AF_INET6:
-      size = INET6_ADDRSTRLEN;
+      size_address = INET6_ADDRSTRLEN;
       break;
    default:
-      size = 0;
+      size_address = 0;
       break;
    }
 
-   if(size > 0)
+   if(size_address > 0)
    {
-      address->address = malloc(sizeof(char) * size);
-      (void)inet_ntop(address->raw.ss_family, &address->raw, 
-                      address->address, size);
+      address->address = malloc(sizeof(char) * size_address);
    }
 
    // Port
@@ -145,23 +143,69 @@ static void ryannet_fill_address(struct ryannet_address * address)
    switch(address->raw.ss_family)
    {
    case AF_INET:
-      port = ntohs(((struct sockaddr_in *)&address->raw)->sin_port);
-      size = PORT_STRING_SIZE;
+      size_port = PORT_STRING_SIZE;
       break;
    case AF_INET6:
-      port = ntohs(((struct sockaddr_in6 *)&address->raw)->sin6_port);
-      size = PORT_STRING_SIZE;
+      size_port = PORT_STRING_SIZE;
       break;
    default:
-      size = 0;
+      size_port = 0;
       break;
    }
-   if(size > 0)
+   if(size_port > 0)
    {
-      address->port = malloc(sizeof(char) * size);
-      sprintf(address->port, "%d", port);
+      address->port = malloc(sizeof(char) * size_port);
    }
 
+   rv = getnameinfo((struct sockaddr *)&address->raw, sizeof(struct sockaddr_storage),
+                    address->address, size_address,
+                    address->port, size_port, NI_NUMERICHOST | NI_NUMERICSERV);
+
+   if(rv != 0)
+   {
+      fprintf(stderr, "Error getnameinfo: %s\n", gai_strerror(rv));
+      if(address->address != NULL)
+      {
+         free(address->address);
+      }
+      if(address->port != NULL)
+      {
+         free(address->port);
+      }
+   }
+
+}
+
+static void ryannet_getaddrinfo_dump(const char * node, const char * port)
+{
+
+   struct addrinfo hints, *servinfo, *p;
+   struct ryannet_address * address;
+   int rv;
+
+   address = ryannet_address_new();
+
+   memset(&hints, 0, sizeof(struct addrinfo));
+   hints.ai_family = AF_UNSPEC;
+   hints.ai_socktype = SOCK_STREAM;
+   hints.ai_flags = AI_PASSIVE; // Use any local IPV4 or IPV6 address I have
+   
+   rv = getaddrinfo(node, port, &hints, &servinfo);
+   if(rv != 0)
+   {
+      fprintf(stderr, "getaddrinfo %s\n", gai_strerror(rv));
+      return;
+   }
+
+   for(p = servinfo; p != NULL; p = p->ai_next)
+   {
+      memcpy(&address->raw, p->ai_addr, p->ai_addrlen);
+      ryannet_fill_address(address);
+      printf("getaddrinfo: %s : %s\n", address->address, address->port);
+
+   }
+   freeaddrinfo(servinfo);
+   ryannet_address_destroy(address);
 
 }
 
@@ -384,6 +428,8 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
    struct addrinfo hints, *servinfo, *p;
    int rv;
    socklen_t length;
+
+   ryannet_getaddrinfo_dump(bind_address, bind_port);
 
    memset(&hints, 0, sizeof(struct addrinfo));
    hints.ai_family = AF_UNSPEC;
