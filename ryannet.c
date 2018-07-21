@@ -457,7 +457,7 @@ int ryannet_socket_tcp_bind(struct ryannet_socket_tcp * sock, const char * bind_
    int rv;
    socklen_t length;
 
-   ryannet_getaddrinfo_dump(bind_address, bind_port);
+   //ryannet_getaddrinfo_dump(bind_address, bind_port);
 
    memset(&hints, 0, sizeof(struct addrinfo));
    if(bind_address == NULL)
