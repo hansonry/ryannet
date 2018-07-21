@@ -1,6 +1,6 @@
 # RyanNet
 
-A two file c library that can do cross platform network communications with and emphasis on game development.
+A two file c library that can do cross platform network communications with an emphasis on game development.
 
 ## Getting Started
 
